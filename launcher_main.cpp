@@ -10,6 +10,7 @@ extern "C" {
 #include "pokegold.h"
 #include "pokesilver.h"
 #include "pokecrystal.h"
+#include "gb_sha256.h"
 }
 
 #include <SDL.h>
@@ -33,6 +34,9 @@ typedef struct {
     const char* title;
     const char* rom_path;
     GBLauncherMainFn main_fn;
+    /* Lowercase 64-char SHA-256 of the ROM revision the static
+     * recompilation was built against. NULL skips the check. */
+    const char* expected_sha256;
 } GBLauncherGame;
 
 static int launch_pokered(int argc, char* argv[])     { return pokered_main(argc, argv); }
@@ -42,13 +46,21 @@ static int launch_pokegold(int argc, char* argv[])    { return pokegold_main(arg
 static int launch_pokesilver(int argc, char* argv[])  { return pokesilver_main(argc, argv); }
 static int launch_pokecrystal(int argc, char* argv[]) { return pokecrystal_main(argc, argv); }
 
+/* SHA-256 of each canonical cart ROM. */
+static const char SHA_POKERED[]     = "5ca7ba01642a3b27b0cc0b5349b52792795b62d3ed977e98a09390659af96b7b";
+static const char SHA_POKEBLUE[]    = "2a951313c2640e8c2cb21f25d1db019ae6245d9c7121f754fa61afd7bee6452d";
+static const char SHA_POKEYELLOW[]  = "8cbaa499397e4f1a679c992ea9382a2dd7942ab398b48c19829c2d9529de47bf";
+static const char SHA_POKEGOLD[]    = "fb0016d27b1e5374e1ec9fcad60e6628d8646103b5313ca683417f52b97e7e4e";
+static const char SHA_POKESILVER[]  = "72b190859a59623cbef6c49d601f8de52c1d2331b4f08a8d2acc17274fc19a8c";
+static const char SHA_POKECRYSTAL[] = "fdcc3c8c43813cf8731fc037d2a6d191bac75439c34b24ba1c27526e6acdc8a2";
+
 static GBLauncherGame g_games[] = {
-    {"pokered",     "Pokemon Red",     "roms/pokered.gb",      launch_pokered},
-    {"pokeblue",    "Pokemon Blue",    "roms/pokeblue.gb",     launch_pokeblue},
-    {"pokeyellow",  "Pokemon Yellow",  "roms/pokeyellow.gbc",  launch_pokeyellow},
-    {"pokegold",    "Pokemon Gold",    "roms/pokegold.gbc",    launch_pokegold},
-    {"pokesilver",  "Pokemon Silver",  "roms/pokesilver.gbc",  launch_pokesilver},
-    {"pokecrystal", "Pokemon Crystal", "roms/pokecrystal.gbc", launch_pokecrystal},
+    {"pokered",     "Pokemon Red",     "roms/pokered.gb",      launch_pokered,     SHA_POKERED},
+    {"pokeblue",    "Pokemon Blue",    "roms/pokeblue.gb",     launch_pokeblue,    SHA_POKEBLUE},
+    {"pokeyellow",  "Pokemon Yellow",  "roms/pokeyellow.gbc",  launch_pokeyellow,  SHA_POKEYELLOW},
+    {"pokegold",    "Pokemon Gold",    "roms/pokegold.gbc",    launch_pokegold,    SHA_POKEGOLD},
+    {"pokesilver",  "Pokemon Silver",  "roms/pokesilver.gbc",  launch_pokesilver,  SHA_POKESILVER},
+    {"pokecrystal", "Pokemon Crystal", "roms/pokecrystal.gbc", launch_pokecrystal, SHA_POKECRYSTAL},
 };
 
 static const char* g_launcher_name = "pokegb";
@@ -443,6 +455,14 @@ int main(int argc, char* argv[]) {
         }
 
         fprintf(stderr, "[LAUNCH] Starting %s [%s]\n", selected->title, selected->id);
+        /* Hash-verify the ROM matches the build the cart was compiled
+         * against. Mismatch is a warning, not fatal -- the asset loader
+         * still gates on its own checks. */
+        if (selected->expected_sha256 && selected->rom_path) {
+            gb_sha256_verify_file(selected->rom_path,
+                                  selected->expected_sha256,
+                                  selected->rom_path);
+        }
         /* In single-game mode there's no launcher to return to, so hide
          * the in-game "Return to Launcher" Esc-menu entry (the menu shows
          * "Restart Game" in its place — handled below by the consume call). */
